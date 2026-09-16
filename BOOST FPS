@@ -1,9 +1,10 @@
--- // Bacon Booster — ULTRA (RNG SAFE)
+-- // Bacon Booster — с загрузкой и кнопкой закрытия
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
 local SoundService = game:GetService("SoundService")
+local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local pg = player:WaitForChild("PlayerGui")
@@ -12,11 +13,148 @@ local cam = Workspace.CurrentCamera
 local old = pg:FindFirstChild("BaconBooster")
 if old then old:Destroy() end
 
--- ===== GUI =====
+-- ========================================
+-- ЗАГРУЗОЧНЫЙ ЭКРАН
+-- ========================================
+local loadGui = Instance.new("ScreenGui")
+loadGui.Name = "BaconHubLoader"
+loadGui.ResetOnSpawn = false
+loadGui.DisplayOrder = 200
+loadGui.IgnoreGuiInset = true
+loadGui.Parent = pg
+
+local loadFrame = Instance.new("Frame")
+loadFrame.Size = UDim2.new(0, 400, 0, 180)
+loadFrame.Position = UDim2.new(0.5, -200, 0.5, -90)
+loadFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+loadFrame.BorderSizePixel = 0
+loadFrame.Parent = loadGui
+Instance.new("UICorner", loadFrame).CornerRadius = UDim.new(0, 18)
+
+local loadStroke = Instance.new("UIStroke", loadFrame)
+loadStroke.Color = Color3.fromRGB(45, 45, 45)
+loadStroke.Thickness = 1.5
+
+-- Заголовок
+local loadTitle = Instance.new("TextLabel")
+loadTitle.Size = UDim2.new(1, 0, 0, 50)
+loadTitle.Position = UDim2.new(0, 0, 0, 25)
+loadTitle.BackgroundTransparency = 1
+loadTitle.Text = "BACON HUB"
+loadTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+loadTitle.Font = Enum.Font.GothamBold
+loadTitle.TextSize = 28
+loadTitle.Parent = loadFrame
+
+-- Подпись
+local loadSub = Instance.new("TextLabel")
+loadSub.Size = UDim2.new(1, 0, 0, 20)
+loadSub.Position = UDim2.new(0, 0, 0, 65)
+loadSub.BackgroundTransparency = 1
+loadSub.Text = "LOADING..."
+loadSub.TextColor3 = Color3.fromRGB(120, 120, 120)
+loadSub.Font = Enum.Font.Gotham
+loadSub.TextSize = 13
+loadSub.Parent = loadFrame
+
+-- Прогресс-бар (задний фон)
+local barBg = Instance.new("Frame")
+barBg.Size = UDim2.new(1, -60, 0, 20)
+barBg.Position = UDim2.new(0, 30, 0, 105)
+barBg.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+barBg.BorderSizePixel = 0
+barBg.Parent = loadFrame
+Instance.new("UICorner", barBg).CornerRadius = UDim.new(0, 10)
+
+-- Прогресс-бар (зелёная полоска)
+local barFill = Instance.new("Frame")
+barFill.Size = UDim2.new(0, 0, 1, 0)
+barFill.BackgroundColor3 = Color3.fromRGB(0, 220, 100)
+barFill.BorderSizePixel = 0
+barFill.Parent = barBg
+Instance.new("UICorner", barFill).CornerRadius = UDim.new(0, 10)
+
+-- Процент
+local percentLabel = Instance.new("TextLabel")
+percentLabel.Size = UDim2.new(1, 0, 0, 22)
+percentLabel.Position = UDim2.new(0, 0, 0, 135)
+percentLabel.BackgroundTransparency = 1
+percentLabel.Text = "0%"
+percentLabel.TextColor3 = Color3.fromRGB(0, 220, 100)
+percentLabel.Font = Enum.Font.GothamBold
+percentLabel.TextSize = 14
+percentLabel.Parent = loadFrame
+
+print("[BB] Загрузочный экран создан")
+
+-- ========================================
+-- АНИМАЦИЯ ЗАГРУЗКИ (7 секунд)
+-- ========================================
+local LOAD_TIME = 7
+
+local startTime = tick()
+
+local updateConn
+updateConn = game:GetService("RunService").Heartbeat:Connect(function()
+    local elapsed = tick() - startTime
+    local progress = math.clamp(elapsed / LOAD_TIME, 0, 1)
+    
+    -- Плавное заполнение
+    barFill.Size = UDim2.new(progress, 0, 1, 0)
+    percentLabel.Text = string.format("%d%%", math.floor(progress * 100))
+    
+    -- Меняем цвет ближе к концу
+    if progress > 0.9 then
+        percentLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
+    end
+    
+    -- Проверяем завершение
+    if progress >= 1 then
+        if updateConn then updateConn:Disconnect() end
+        percentLabel.Text = "100%"
+        
+        -- Пауза перед появлением меню
+        task.wait(0.3)
+        
+        -- Плавное исчезновение загрузки
+        local fadeOut = TweenService:Create(loadFrame, TweenInfo.new(0.4), {
+            BackgroundTransparency = 1
+        })
+        local fadeStroke = TweenService:Create(loadStroke, TweenInfo.new(0.4), {
+            Transparency = 1
+        })
+        fadeOut:Play()
+        fadeStroke:Play()
+        
+        for _, child in ipairs(loadFrame:GetDescendants()) do
+            if child:IsA("TextLabel") or child:IsA("Frame") then
+                pcall(function()
+                    TweenService:Create(child, TweenInfo.new(0.4), {
+                        BackgroundTransparency = 1,
+                        TextTransparency = 1
+                    }):Play()
+                end)
+            end
+        end
+        
+        task.wait(0.5)
+        loadGui:Destroy()
+        
+        -- Показываем меню
+        if _G.BaconBooster_showMenu then
+            _G.BaconBooster_showMenu()
+        end
+    end
+end)
+
+-- ========================================
+-- ОСНОВНОЕ МЕНЮ (скрыто, пока не загрузится)
+-- ========================================
 local sg = Instance.new("ScreenGui")
 sg.Name = "BaconBooster"
 sg.ResetOnSpawn = false
 sg.DisplayOrder = 100
+sg.Enabled = false  -- СКРЫТО пока идёт загрузка
 sg.Parent = pg
 
 local menu = Instance.new("Frame")
@@ -28,14 +166,67 @@ menu.Active = true
 menu.Parent = sg
 Instance.new("UICorner", menu).CornerRadius = UDim.new(0, 18)
 
+local menuStroke = Instance.new("UIStroke", menu)
+menuStroke.Color = Color3.fromRGB(45, 45, 45)
+menuStroke.Thickness = 1.5
+
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 45)
+title.Size = UDim2.new(1, -40, 0, 45)
+title.Position = UDim2.new(0, 20, 0, 0)
 title.BackgroundTransparency = 1
 title.Text = "BACON BOOSTER"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 18
+title.TextXAlignment = Enum.TextXAlignment.Left
 title.Parent = menu
+
+-- ===== КНОПКА ЗАКРЫТИЯ (×) =====
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -40, 0, 8)
+closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+closeBtn.Text = "×"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 22
+closeBtn.AutoButtonColor = false
+closeBtn.BorderSizePixel = 0
+closeBtn.Parent = menu
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
+
+-- Hover-эффекты для кнопки закрытия
+closeBtn.MouseEnter:Connect(function()
+    closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+end)
+closeBtn.MouseLeave:Connect(function()
+    closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+end)
+
+-- Клик по крестику
+closeBtn.MouseButton1Click:Connect(function()
+    sg:Destroy()
+    print("[BB] Меню закрыто")
+end)
+
+-- Также через UserInputService (на случай если MouseButton1Click не работает)
+local lastCloseClick = 0
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+       or input.UserInputType == Enum.UserInputType.Touch then
+        if not sg.Parent then return end
+        local ap = closeBtn.AbsolutePosition
+        local sz = closeBtn.AbsoluteSize
+        local pos = input.Position
+        if pos.X >= ap.X and pos.X <= ap.X + sz.X
+           and pos.Y >= ap.Y and pos.Y <= ap.Y + sz.Y then
+            if tick() - lastCloseClick < 0.3 then return end
+            lastCloseClick = tick()
+            sg:Destroy()
+            print("[BB] Меню закрыто")
+        end
+    end
+end)
 
 local btn = Instance.new("TextButton")
 btn.Size = UDim2.new(1, -40, 0, 70)
@@ -73,7 +264,11 @@ info.TextSize = 12
 info.TextXAlignment = Enum.TextXAlignment.Left
 info.Parent = menu
 
-print("[BB] Меню создано")
+-- Функция показа меню (вызывается после загрузки)
+_G.BaconBooster_showMenu = function()
+    sg.Enabled = true
+    print("[BB] Меню показано после загрузки")
+end
 
 local function hit(pos, frame)
     local p = frame.AbsolutePosition
@@ -109,42 +304,35 @@ local savedAcc = {}
 local savedHumans = {}
 local savedWater = {}
 local savedSounds = {}
-local savedMeshes = {}       -- RenderFidelity
+local savedMeshes = {}
 local savedTerrainDecor = nil
 
--- ===== ОПТИМИЗАЦИЯ (безопасно для RNG) =====
 local function killObj(o)
     pcall(function()
         local cls = o.ClassName
 
-        -- Частицы/эффекты
         if cls == "ParticleEmitter" or cls == "Trail" or cls == "Smoke"
            or cls == "Fire" or cls == "Sparkles" or cls == "Beam"
            or cls == "Highlight" then
             if savedFx[o] == nil then savedFx[o] = o.Enabled end
             o.Enabled = false
 
-        -- Свет
         elseif cls == "PointLight" or cls == "SpotLight" or cls == "SurfaceLight" then
             if savedFx[o] == nil then savedFx[o] = o.Enabled end
             o.Enabled = false
 
-        -- Декали/текстуры
         elseif cls == "Decal" or cls == "Texture" then
             if savedFx[o] == nil then savedFx[o] = o.Transparency end
             o.Transparency = 1
 
-        -- PBR
         elseif cls == "SurfaceAppearance" then
             if savedFx[o] == nil then savedFx[o] = o.Parent end
             o.Parent = nil
 
-        -- Звуки — только Volume (не удаляем!)
         elseif cls == "Sound" then
             if savedSounds[o] == nil then savedSounds[o] = o.Volume end
             o.Volume = 0
 
-        -- MeshPart — RenderFidelity в Performance (модель та же!)
         elseif cls == "MeshPart" then
             if savedMeshes[o] == nil then
                 savedMeshes[o] = {
@@ -159,7 +347,6 @@ local function killObj(o)
                 o.CastShadow = false
             end)
 
-        -- Обычные части — только тени
         elseif cls == "Part" or cls == "UnionOperation"
             or cls == "TrussPart" or cls == "WedgePart" then
             if savedFx[o] == nil then savedFx[o] = o.CastShadow end
@@ -168,43 +355,35 @@ local function killObj(o)
     end)
 end
 
--- ===== ВКЛЮЧЕНИЕ =====
 local function boostOn()
-    -- 1) Минимум графики
     pcall(function()
         settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
         settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
     end)
 
-    -- 2) Тени
     pcall(function() Lighting.GlobalShadows = false end)
 
-    -- 3) Пост-эффекты + Атмосфера (шейдеры!)
     for _, v in ipairs(Lighting:GetChildren()) do
         if v:IsA("PostEffect") or v:IsA("Atmosphere") then
             pcall(function() v.Enabled = false end)
         end
     end
 
-    -- 4) Terrain Decoration (трава/камни на земле = много объектов)
     pcall(function()
         savedTerrainDecor = Workspace.Terrain.Decoration
         Workspace.Terrain.Decoration = false
     end)
 
-    -- 5) Reverb
     pcall(function()
         SoundService.AmbientReverb = Enum.ReverbType.NoReverb
     end)
 
-    -- 6) FOV чуть уже (мягко, 90 → 75)
     pcall(function()
         if cam.FieldOfView > 75 then
             cam.FieldOfView = 75
         end
     end)
 
-    -- 7) Вода
     pcall(function()
         local t = Workspace.Terrain
         savedWater.size = t.WaterWaveSize
@@ -217,7 +396,6 @@ local function boostOn()
         t.WaterTransparency = 1
     end)
 
-    -- 8) Чужие игроки
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= player and plr.Character then
             local hum = plr.Character:FindFirstChildOfClass("Humanoid")
@@ -244,7 +422,6 @@ local function boostOn()
         end
     end
 
-    -- 9) Один проход
     task.spawn(function()
         local all = Workspace:GetDescendants()
         local total = #all
@@ -260,7 +437,6 @@ local function boostOn()
     end)
 end
 
--- ===== ВЫКЛЮЧЕНИЕ =====
 local function boostOff()
     pcall(function()
         if origQuality then settings().Rendering.QualityLevel = origQuality end
@@ -341,7 +517,6 @@ local function boostOff()
     savedHumans = {}
 end
 
--- ===== КЛИК =====
 local function doClick()
     if tick() - lastClick < 0.3 then return end
     lastClick = tick()
@@ -370,7 +545,7 @@ btn.MouseButton1Down:Connect(doClick)
 UserInputService.InputBegan:Connect(function(input, gpe)
     if input.UserInputType == Enum.UserInputType.MouseButton1
        or input.UserInputType == Enum.UserInputType.Touch then
-        if hit(input.Position, btn) then
+        if hit(input.Position, btn) and sg.Enabled then
             doClick()
         end
     end
@@ -403,4 +578,4 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
-print("[BB] Bacon Booster ULTRA загружено!")
+print("[BB] Bacon Booster загружено! Ждём завершения загрузки...")
