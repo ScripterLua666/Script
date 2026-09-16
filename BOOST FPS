@@ -1,0 +1,406 @@
+-- // Bacon Booster — ULTRA (RNG SAFE)
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local SoundService = game:GetService("SoundService")
+
+local player = Players.LocalPlayer
+local pg = player:WaitForChild("PlayerGui")
+local cam = Workspace.CurrentCamera
+
+local old = pg:FindFirstChild("BaconBooster")
+if old then old:Destroy() end
+
+-- ===== GUI =====
+local sg = Instance.new("ScreenGui")
+sg.Name = "BaconBooster"
+sg.ResetOnSpawn = false
+sg.DisplayOrder = 100
+sg.Parent = pg
+
+local menu = Instance.new("Frame")
+menu.Size = UDim2.new(0, 320, 0, 210)
+menu.Position = UDim2.new(0.5, -160, 0.5, -105)
+menu.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+menu.BorderSizePixel = 0
+menu.Active = true
+menu.Parent = sg
+Instance.new("UICorner", menu).CornerRadius = UDim.new(0, 18)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 45)
+title.BackgroundTransparency = 1
+title.Text = "BACON BOOSTER"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 18
+title.Parent = menu
+
+local btn = Instance.new("TextButton")
+btn.Size = UDim2.new(1, -40, 0, 70)
+btn.Position = UDim2.new(0, 20, 0, 60)
+btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+btn.Text = "🔥 BOOST: OFF"
+btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 18
+btn.AutoButtonColor = false
+btn.BorderSizePixel = 0
+btn.Active = true
+btn.Parent = menu
+Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 12)
+
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, -40, 0, 22)
+status.Position = UDim2.new(0, 20, 0, 138)
+status.BackgroundTransparency = 1
+status.Text = "FPS: --"
+status.TextColor3 = Color3.fromRGB(150, 150, 150)
+status.Font = Enum.Font.Gotham
+status.TextSize = 13
+status.TextXAlignment = Enum.TextXAlignment.Left
+status.Parent = menu
+
+local info = Instance.new("TextLabel")
+info.Size = UDim2.new(1, -40, 0, 22)
+info.Position = UDim2.new(0, 20, 0, 160)
+info.BackgroundTransparency = 1
+info.Text = "ULTRA BOOST ACTIVE"
+info.TextColor3 = Color3.fromRGB(120, 120, 120)
+info.Font = Enum.Font.GothamBold
+info.TextSize = 12
+info.TextXAlignment = Enum.TextXAlignment.Left
+info.Parent = menu
+
+print("[BB] Меню создано")
+
+local function hit(pos, frame)
+    local p = frame.AbsolutePosition
+    local s = frame.AbsoluteSize
+    return pos.X >= p.X and pos.X <= p.X + s.X
+       and pos.Y >= p.Y and pos.Y <= p.Y + s.Y
+end
+
+local on = false
+local lastClick = 0
+
+-- ===== СОХРАНЕНИЕ =====
+local origShadows = Lighting.GlobalShadows
+local origFOV = cam.FieldOfView
+local origEffects = {}
+for _, v in ipairs(Lighting:GetChildren()) do
+    if v:IsA("PostEffect") or v:IsA("Atmosphere") then
+        origEffects[v] = v.Enabled
+    end
+end
+
+local origQuality, origMeshDetail
+pcall(function()
+    origQuality = settings().Rendering.QualityLevel
+    origMeshDetail = settings().Rendering.MeshPartDetailLevel
+end)
+
+local origReverb
+pcall(function() origReverb = SoundService.AmbientReverb end)
+
+local savedFx = {}
+local savedAcc = {}
+local savedHumans = {}
+local savedWater = {}
+local savedSounds = {}
+local savedMeshes = {}       -- RenderFidelity
+local savedTerrainDecor = nil
+
+-- ===== ОПТИМИЗАЦИЯ (безопасно для RNG) =====
+local function killObj(o)
+    pcall(function()
+        local cls = o.ClassName
+
+        -- Частицы/эффекты
+        if cls == "ParticleEmitter" or cls == "Trail" or cls == "Smoke"
+           or cls == "Fire" or cls == "Sparkles" or cls == "Beam"
+           or cls == "Highlight" then
+            if savedFx[o] == nil then savedFx[o] = o.Enabled end
+            o.Enabled = false
+
+        -- Свет
+        elseif cls == "PointLight" or cls == "SpotLight" or cls == "SurfaceLight" then
+            if savedFx[o] == nil then savedFx[o] = o.Enabled end
+            o.Enabled = false
+
+        -- Декали/текстуры
+        elseif cls == "Decal" or cls == "Texture" then
+            if savedFx[o] == nil then savedFx[o] = o.Transparency end
+            o.Transparency = 1
+
+        -- PBR
+        elseif cls == "SurfaceAppearance" then
+            if savedFx[o] == nil then savedFx[o] = o.Parent end
+            o.Parent = nil
+
+        -- Звуки — только Volume (не удаляем!)
+        elseif cls == "Sound" then
+            if savedSounds[o] == nil then savedSounds[o] = o.Volume end
+            o.Volume = 0
+
+        -- MeshPart — RenderFidelity в Performance (модель та же!)
+        elseif cls == "MeshPart" then
+            if savedMeshes[o] == nil then
+                savedMeshes[o] = {
+                    fid = o.RenderFidelity,
+                    ds = o.DoubleSided,
+                    shadow = o.CastShadow,
+                }
+            end
+            pcall(function()
+                o.RenderFidelity = Enum.RenderFidelity.Performance
+                o.DoubleSided = false
+                o.CastShadow = false
+            end)
+
+        -- Обычные части — только тени
+        elseif cls == "Part" or cls == "UnionOperation"
+            or cls == "TrussPart" or cls == "WedgePart" then
+            if savedFx[o] == nil then savedFx[o] = o.CastShadow end
+            o.CastShadow = false
+        end
+    end)
+end
+
+-- ===== ВКЛЮЧЕНИЕ =====
+local function boostOn()
+    -- 1) Минимум графики
+    pcall(function()
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
+    end)
+
+    -- 2) Тени
+    pcall(function() Lighting.GlobalShadows = false end)
+
+    -- 3) Пост-эффекты + Атмосфера (шейдеры!)
+    for _, v in ipairs(Lighting:GetChildren()) do
+        if v:IsA("PostEffect") or v:IsA("Atmosphere") then
+            pcall(function() v.Enabled = false end)
+        end
+    end
+
+    -- 4) Terrain Decoration (трава/камни на земле = много объектов)
+    pcall(function()
+        savedTerrainDecor = Workspace.Terrain.Decoration
+        Workspace.Terrain.Decoration = false
+    end)
+
+    -- 5) Reverb
+    pcall(function()
+        SoundService.AmbientReverb = Enum.ReverbType.NoReverb
+    end)
+
+    -- 6) FOV чуть уже (мягко, 90 → 75)
+    pcall(function()
+        if cam.FieldOfView > 75 then
+            cam.FieldOfView = 75
+        end
+    end)
+
+    -- 7) Вода
+    pcall(function()
+        local t = Workspace.Terrain
+        savedWater.size = t.WaterWaveSize
+        savedWater.speed = t.WaterWaveSpeed
+        savedWater.reflect = t.WaterReflectance
+        savedWater.transp = t.WaterTransparency
+        t.WaterWaveSize = 0
+        t.WaterWaveSpeed = 0
+        t.WaterReflectance = 0
+        t.WaterTransparency = 1
+    end)
+
+    -- 8) Чужие игроки
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= player and plr.Character then
+            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+            if hum then
+                savedHumans[hum] = {
+                    dist = hum.DisplayDistanceType,
+                    health = hum.HealthDisplayDistance,
+                    name = hum.NameDisplayDistance,
+                }
+                pcall(function()
+                    hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+                    hum.HealthDisplayDistance = 0
+                    hum.NameDisplayDistance = 0
+                end)
+            end
+            for _, o in ipairs(plr.Character:GetDescendants()) do
+                if o:IsA("Accessory") or o:IsA("Shirt") or o:IsA("Pants")
+                   or o:IsA("ShirtGraphic") or o:IsA("CharacterMesh")
+                   or o:IsA("BodyColors") then
+                    savedAcc[o] = o.Parent
+                    pcall(function() o.Parent = nil end)
+                end
+            end
+        end
+    end
+
+    -- 9) Один проход
+    task.spawn(function()
+        local all = Workspace:GetDescendants()
+        local total = #all
+        for i = 1, total do
+            if not on then break end
+            local ok, o = pcall(function() return all[i] end)
+            if ok and o then
+                pcall(killObj, o)
+            end
+            if i % 800 == 0 then task.wait(0.03) end
+        end
+        print("[BB] ULTRA готов. Объектов: " .. total)
+    end)
+end
+
+-- ===== ВЫКЛЮЧЕНИЕ =====
+local function boostOff()
+    pcall(function()
+        if origQuality then settings().Rendering.QualityLevel = origQuality end
+        if origMeshDetail then settings().Rendering.MeshPartDetailLevel = origMeshDetail end
+    end)
+
+    pcall(function() Lighting.GlobalShadows = origShadows end)
+    pcall(function() cam.FieldOfView = origFOV end)
+
+    for e, s in pairs(origEffects) do
+        pcall(function() e.Enabled = s end)
+    end
+
+    if savedTerrainDecor ~= nil then
+        pcall(function() Workspace.Terrain.Decoration = savedTerrainDecor end)
+    end
+
+    if origReverb then
+        pcall(function() SoundService.AmbientReverb = origReverb end)
+    end
+
+    for o, v in pairs(savedFx) do
+        if o and o.Parent then
+            pcall(function()
+                if typeof(v) == "boolean" then o.Enabled = v
+                elseif typeof(v) == "number" then o.Transparency = v
+                elseif typeof(v) == "Instance" then o.Parent = v end
+            end)
+        end
+    end
+    savedFx = {}
+
+    for o, v in pairs(savedSounds) do
+        if o and o.Parent then
+            pcall(function() o.Volume = v end)
+        end
+    end
+    savedSounds = {}
+
+    for o, d in pairs(savedMeshes) do
+        if o and o.Parent then
+            pcall(function()
+                o.RenderFidelity = d.fid
+                o.DoubleSided = d.ds
+                o.CastShadow = d.shadow
+            end)
+        end
+    end
+    savedMeshes = {}
+
+    for o, parent in pairs(savedAcc) do
+        if o and parent then
+            pcall(function() o.Parent = parent end)
+        end
+    end
+    savedAcc = {}
+
+    if savedWater.size then
+        pcall(function()
+            local t = Workspace.Terrain
+            t.WaterWaveSize = savedWater.size
+            t.WaterWaveSpeed = savedWater.speed
+            t.WaterReflectance = savedWater.reflect
+            t.WaterTransparency = savedWater.transp
+        end)
+        savedWater = {}
+    end
+
+    for hum, d in pairs(savedHumans) do
+        if hum and hum.Parent then
+            pcall(function()
+                hum.DisplayDistanceType = d.dist
+                hum.HealthDisplayDistance = d.health
+                hum.NameDisplayDistance = d.name
+            end)
+        end
+    end
+    savedHumans = {}
+end
+
+-- ===== КЛИК =====
+local function doClick()
+    if tick() - lastClick < 0.3 then return end
+    lastClick = tick()
+    on = not on
+    print("[BB] Клик, on = " .. tostring(on))
+    if on then
+        btn.Text = "🔥 BOOST: ON"
+        btn.BackgroundColor3 = Color3.fromRGB(0, 90, 40)
+        info.Text = "ULTRA BOOST ACTIVE"
+        info.TextColor3 = Color3.fromRGB(0, 220, 100)
+        status.Text = "FPS: 60"
+        task.spawn(boostOn)
+    else
+        btn.Text = "🔥 BOOST: OFF"
+        btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        info.Text = "BOOST DEACTIVATED"
+        info.TextColor3 = Color3.fromRGB(120, 120, 120)
+        status.Text = "FPS: --"
+        task.spawn(boostOff)
+    end
+end
+
+btn.MouseButton1Click:Connect(doClick)
+btn.MouseButton1Down:Connect(doClick)
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+       or input.UserInputType == Enum.UserInputType.Touch then
+        if hit(input.Position, btn) then
+            doClick()
+        end
+    end
+end)
+
+-- ===== ПЕРЕТАСКИВАНИЕ =====
+local drag = false
+local ds, ss
+
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if hit(input.Position, title) then
+            drag = true
+            ds = input.Position
+            ss = menu.Position
+        end
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if drag and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local d = input.Position - ds
+        menu.Position = UDim2.new(ss.X.Scale, ss.X.Offset + d.X, ss.Y.Scale, ss.Y.Offset + d.Y)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        drag = false
+    end
+end)
+
+print("[BB] Bacon Booster ULTRA загружено!")
